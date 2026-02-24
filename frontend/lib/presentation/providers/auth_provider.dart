@@ -142,6 +142,10 @@ class AuthNotifier extends ChangeNotifier {
         );
       }
 
+      // Save default PIN if none set yet
+      final hasPin = await _storage.hasPin();
+      if (!hasPin) await _storage.savePin('1234');
+
       _emit(_state.copyWith(
         status: AuthStatus.authenticated,
         user: result.user,
@@ -168,6 +172,10 @@ class AuthNotifier extends ChangeNotifier {
 
       _updateDioToken(result.accessToken);
       await _storage.updateLastActiveTime();
+
+      // Save default PIN if none set yet
+      final hasPin = await _storage.hasPin();
+      if (!hasPin) await _storage.savePin('1234');
 
       _emit(_state.copyWith(
         status: AuthStatus.authenticated,
@@ -214,6 +222,33 @@ class AuthNotifier extends ChangeNotifier {
       if (!authenticated) return false;
 
       // Retrieve stored encryption key
+      final keyBytes = await _storage.getEncryptionKey();
+      if (keyBytes == null) return false;
+
+      final encKey = CryptoUtils.bytesToSecretKey(keyBytes);
+      await _storage.updateLastActiveTime();
+
+      _emit(_state.copyWith(
+        isVaultUnlocked: true,
+        encryptionKey: encKey,
+      ));
+
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<bool> unlockWithPin(String pin) async {
+    try {
+      var storedPin = await _storage.getPin();
+      // No PIN stored yet — bootstrap the default on first use
+      if (storedPin == null) {
+        await _storage.savePin('1234');
+        storedPin = '1234';
+      }
+      if (pin != storedPin) return false;
+
       final keyBytes = await _storage.getEncryptionKey();
       if (keyBytes == null) return false;
 

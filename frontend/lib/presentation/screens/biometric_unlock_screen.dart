@@ -15,39 +15,53 @@ class BiometricUnlockScreen extends ConsumerStatefulWidget {
 
 class _BiometricUnlockScreenState extends ConsumerState<BiometricUnlockScreen>
     with SingleTickerProviderStateMixin {
-  late AnimationController _pulseCtrl;
-  late Animation<double> _pulseAnim;
+  String _pin = '';
   bool _loading = false;
-  bool _failed = false;
+  bool _error = false;
+
+  late AnimationController _shakeCtrl;
+  late Animation<double> _shakeAnim;
 
   @override
   void initState() {
     super.initState();
-    _pulseCtrl = AnimationController(
+    _shakeCtrl = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1400),
-    )..repeat(reverse: true);
-    _pulseAnim = Tween<double>(begin: 0.95, end: 1.05).animate(
-      CurvedAnimation(parent: _pulseCtrl, curve: Curves.easeInOut),
+      duration: const Duration(milliseconds: 400),
     );
-    // Auto-trigger biometric
-    WidgetsBinding.instance.addPostFrameCallback((_) => _tryBiometric());
+    _shakeAnim = TweenSequence<double>([
+      TweenSequenceItem(tween: Tween(begin: 0, end: -10), weight: 1),
+      TweenSequenceItem(tween: Tween(begin: -10, end: 10), weight: 2),
+      TweenSequenceItem(tween: Tween(begin: 10, end: -10), weight: 2),
+      TweenSequenceItem(tween: Tween(begin: -10, end: 10), weight: 2),
+      TweenSequenceItem(tween: Tween(begin: 10, end: 0), weight: 1),
+    ]).animate(CurvedAnimation(parent: _shakeCtrl, curve: Curves.easeInOut));
   }
 
   @override
   void dispose() {
-    _pulseCtrl.dispose();
+    _shakeCtrl.dispose();
     super.dispose();
   }
 
-  Future<void> _tryBiometric() async {
-    if (_loading) return;
+  void _onDigit(String digit) {
+    if (_pin.length >= 4 || _loading) return;
     setState(() {
-      _loading = true;
-      _failed = false;
+      _pin += digit;
+      _error = false;
     });
+    if (_pin.length == 4) _validate();
+  }
 
-    final success = await ref.read(authProvider).unlockWithBiometric();
+  void _onDelete() {
+    if (_pin.isEmpty || _loading) return;
+    setState(() => _pin = _pin.substring(0, _pin.length - 1));
+  }
+
+  Future<void> _validate() async {
+    setState(() => _loading = true);
+
+    final success = await ref.read(authProvider).unlockWithPin(_pin);
 
     if (!mounted) return;
     setState(() => _loading = false);
@@ -55,7 +69,11 @@ class _BiometricUnlockScreenState extends ConsumerState<BiometricUnlockScreen>
     if (success) {
       context.go(AppRoutes.vault);
     } else {
-      setState(() => _failed = true);
+      await _shakeCtrl.forward(from: 0);
+      setState(() {
+        _pin = '';
+        _error = true;
+      });
     }
   }
 
@@ -81,119 +99,180 @@ class _BiometricUnlockScreenState extends ConsumerState<BiometricUnlockScreen>
           ),
         ),
         child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(32),
-            child: Column(
-              children: [
-                const Spacer(flex: 2),
-                // Lock icon with glow
-                AnimatedBuilder(
-                  animation: _pulseAnim,
-                  builder: (_, child) => Transform.scale(
-                    scale: _loading ? _pulseAnim.value : 1.0,
-                    child: child,
-                  ),
-                  child: Container(
-                    width: 120,
-                    height: 120,
-                    decoration: BoxDecoration(
-                      gradient: AppColors.primaryGradient,
-                      borderRadius: BorderRadius.circular(36),
-                      boxShadow: [
-                        BoxShadow(
-                          color: AppColors.primary.withOpacity(0.35),
-                          blurRadius: 40,
-                          spreadRadius: 5,
+          child: Column(
+            children: [
+              const Spacer(flex: 2),
+              // Lock icon
+              Container(
+                width: 72,
+                height: 72,
+                decoration: BoxDecoration(
+                  gradient: AppColors.primaryGradient,
+                  borderRadius: BorderRadius.circular(22),
+                ),
+                child: const Icon(
+                  Icons.lock_outline_rounded,
+                  size: 36,
+                  color: Colors.white,
+                ),
+              ),
+              const SizedBox(height: 24),
+              Text(
+                'Vault bloqueado',
+                style: theme.textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Ingresa tu PIN para continuar',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                ),
+              ),
+              const SizedBox(height: 40),
+              // PIN dots with shake animation
+              AnimatedBuilder(
+                animation: _shakeAnim,
+                builder: (_, child) => Transform.translate(
+                  offset: Offset(_shakeAnim.value, 0),
+                  child: child,
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: List.generate(4, (i) {
+                    final filled = i < _pin.length;
+                    return AnimatedContainer(
+                      duration: const Duration(milliseconds: 150),
+                      margin: const EdgeInsets.symmetric(horizontal: 10),
+                      width: 18,
+                      height: 18,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: _error
+                            ? AppColors.error
+                            : filled
+                                ? AppColors.primary
+                                : Colors.transparent,
+                        border: Border.all(
+                          color: _error
+                              ? AppColors.error
+                              : filled
+                                  ? AppColors.primary
+                                  : theme.colorScheme.onSurface
+                                      .withValues(alpha: 0.3),
+                          width: 2,
                         ),
+                      ),
+                    );
+                  }),
+                ),
+              ),
+              if (_error) ...[
+                const SizedBox(height: 12),
+                const Text(
+                  'PIN incorrecto',
+                  style: TextStyle(
+                    color: AppColors.error,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+              const Spacer(flex: 2),
+              // Numpad
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 48),
+                child: Column(
+                  children: [
+                    _buildRow(['1', '2', '3'], theme, isDark),
+                    const SizedBox(height: 16),
+                    _buildRow(['4', '5', '6'], theme, isDark),
+                    const SizedBox(height: 16),
+                    _buildRow(['7', '8', '9'], theme, isDark),
+                    const SizedBox(height: 16),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        const SizedBox(width: 72, height: 72),
+                        _buildDigitButton('0', theme, isDark),
+                        _buildDeleteButton(theme),
                       ],
                     ),
-                    child: const Icon(
-                      Icons.fingerprint,
-                      size: 60,
-                      color: Colors.white,
-                    ),
-                  ),
+                  ],
                 ),
-                const SizedBox(height: 40),
-                Text(
-                  'Vault bloqueado',
-                  style: theme.textTheme.headlineLarge,
-                  textAlign: TextAlign.center,
+              ),
+              const Spacer(),
+              TextButton.icon(
+                onPressed: _loading ? null : _logout,
+                icon: const Icon(Icons.logout, size: 16),
+                label: const Text('Cerrar sesión'),
+                style: TextButton.styleFrom(
+                  foregroundColor:
+                      theme.colorScheme.onSurface.withValues(alpha: 0.45),
                 ),
-                const SizedBox(height: 12),
-                Text(
-                  'Usa tu huella o Face ID para\ndesbloquear tu vault',
-                  textAlign: TextAlign.center,
-                  style: theme.textTheme.bodyMedium?.copyWith(height: 1.5),
-                ),
-                const SizedBox(height: 40),
-                // Status
-                AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 300),
-                  child: _failed
-                      ? Container(
-                          key: const ValueKey('failed'),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 20,
-                            vertical: 12,
-                          ),
-                          decoration: BoxDecoration(
-                            color: AppColors.errorLight,
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: const Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                Icons.error_outline,
-                                color: AppColors.error,
-                                size: 20,
-                              ),
-                              SizedBox(width: 8),
-                              Text(
-                                'Autenticación fallida',
-                                style: TextStyle(
-                                  color: AppColors.error,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                            ],
-                          ),
-                        )
-                      : const SizedBox.shrink(key: ValueKey('ok')),
-                ),
-                const Spacer(flex: 3),
-                // Retry button
-                SizedBox(
-                  width: double.infinity,
-                  height: 54,
-                  child: ElevatedButton.icon(
-                    onPressed: _loading ? null : _tryBiometric,
-                    icon: _loading
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
-                          )
-                        : const Icon(Icons.fingerprint),
-                    label: Text(_loading ? 'Verificando...' : 'Desbloquear'),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                TextButton.icon(
-                  onPressed: _logout,
-                  icon: const Icon(Icons.logout, size: 18),
-                  label: const Text('Cerrar sesión'),
-                  style: TextButton.styleFrom(
-                    foregroundColor: theme.colorScheme.onSurface.withOpacity(0.5),
-                  ),
-                ),
-                const SizedBox(height: 8),
-              ],
+              ),
+              const SizedBox(height: 16),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildRow(List<String> digits, ThemeData theme, bool isDark) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+      children: digits.map((d) => _buildDigitButton(d, theme, isDark)).toList(),
+    );
+  }
+
+  Widget _buildDigitButton(String digit, ThemeData theme, bool isDark) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: _loading ? null : () => _onDigit(digit),
+        borderRadius: BorderRadius.circular(36),
+        child: Container(
+          width: 72,
+          height: 72,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: isDark ? AppColors.darkCard : Colors.white,
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.07),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Center(
+            child: Text(
+              digit,
+              style: theme.textTheme.headlineSmall?.copyWith(
+                fontWeight: FontWeight.w500,
+              ),
             ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDeleteButton(ThemeData theme) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: _loading ? null : _onDelete,
+        borderRadius: BorderRadius.circular(36),
+        child: SizedBox(
+          width: 72,
+          height: 72,
+          child: Icon(
+            Icons.backspace_outlined,
+            size: 24,
+            color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
           ),
         ),
       ),

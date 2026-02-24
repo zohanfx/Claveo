@@ -112,6 +112,18 @@ class SecureStorageDatasource {
     return int.tryParse(val);
   }
 
+  // ── PIN ───────────────────────────────────────────────────
+
+  Future<void> savePin(String pin) =>
+      _storage.write(key: AppConstants.kPinCode, value: pin);
+
+  Future<String?> getPin() => _storage.read(key: AppConstants.kPinCode);
+
+  Future<bool> hasPin() async {
+    final val = await _storage.read(key: AppConstants.kPinCode);
+    return val != null;
+  }
+
   // ── Full clear (on logout) ────────────────────────────────
 
   Future<void> clearSensitiveData() async {

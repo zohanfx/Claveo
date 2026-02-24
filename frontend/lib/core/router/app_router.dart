@@ -32,14 +32,18 @@ class AppRoutes {
 }
 
 final appRouterProvider = Provider<GoRouter>((ref) {
-  final authNotifier = ref.watch(authProvider);
-  final authState = authNotifier.state;
+  // Use read — the router must NOT rebuild on every auth change.
+  // GoRouterRefreshStream triggers re-evaluation of the redirect callback,
+  // which reads fresh state directly from the notifier each time.
+  final authNotifier = ref.read(authProvider);
 
   return GoRouter(
     initialLocation: AppRoutes.splash,
     debugLogDiagnostics: false,
     refreshListenable: GoRouterRefreshStream(authNotifier),
     redirect: (BuildContext context, GoRouterState state) {
+      // Always read fresh state here — not from a captured closure variable
+      final authState = authNotifier.state;
       final location = state.matchedLocation;
 
       // Wait for auth state to be determined

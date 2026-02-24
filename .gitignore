@@ -63,3 +63,4 @@ frontend/pubspec.lock
 keystore.properties
 google-services.json
 GoogleService-Info.plist
+.claude/

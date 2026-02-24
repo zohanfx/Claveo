@@ -31,6 +31,7 @@ class AppConstants {
   static const String kOnboardingDone = 'claveo_onboarding';
   static const String kLastActiveMs = 'claveo_last_active';
   static const String kDarkMode = 'claveo_dark_mode';
+  static const String kPinCode = 'claveo_pin';
 
   // Vault entry categories
   static const List<String> categories = [
