@@ -1,0 +1,52 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: claveo_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: claveo
+      POSTGRES_USER: claveo_user
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-claveo_dev_password}
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U claveo_user -d claveo']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - claveo_net
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: claveo_backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://claveo_user:${DB_PASSWORD:-claveo_dev_password}@postgres:5432/claveo
+      JWT_SECRET: ${JWT_SECRET:-change-me-super-secret-jwt-key-32chars}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-change-me-refresh-secret-key-32chars}
+      NODE_ENV: ${NODE_ENV:-development}
+      PORT: 3000
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000}
+    ports:
+      - '3000:3000'
+    volumes:
+      - ./backend/logs:/app/logs
+    networks:
+      - claveo_net
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  claveo_net:
+    driver: bridge
