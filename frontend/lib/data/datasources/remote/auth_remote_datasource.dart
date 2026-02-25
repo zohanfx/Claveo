@@ -122,6 +122,74 @@ final dioProvider = Dio(
   ),
 );
 
+/// Intercepts 401 responses, refreshes the access token, and retries.
+/// On refresh failure clears all local credentials so the router redirects
+/// the user back to the login screen.
+class TokenRefreshInterceptor extends Interceptor {
+  final dynamic _storage; // SecureStorageDatasource — typed as dynamic to avoid circular import
+  final Dio _dio;
+  bool _refreshing = false;
+
+  TokenRefreshInterceptor(this._storage, this._dio);
+
+  @override
+  Future<void> onError(
+    DioException err,
+    ErrorInterceptorHandler handler,
+  ) async {
+    final statusCode = err.response?.statusCode;
+    final path = err.requestOptions.path;
+
+    // Only handle 401s that are NOT from the refresh/logout endpoints
+    if (statusCode != 401 ||
+        path.contains('/auth/refresh') ||
+        path.contains('/auth/logout')) {
+      return handler.next(err);
+    }
+
+    if (_refreshing) return handler.next(err);
+    _refreshing = true;
+
+    try {
+      final refreshToken = await _storage.getRefreshToken() as String?;
+      if (refreshToken == null) {
+        await _storage.clearAll();
+        return handler.next(err);
+      }
+
+      // Call refresh endpoint directly (bypass interceptor chain)
+      final refreshDio = Dio(_dio.options);
+      final res = await refreshDio.post(
+        '/auth/refresh',
+        data: {'refreshToken': refreshToken},
+      );
+
+      final data = res.data['data'] as Map<String, dynamic>;
+      final newAccess = data['accessToken'] as String;
+      final newRefresh = data['refreshToken'] as String;
+
+      await _storage.saveTokens(
+        accessToken: newAccess,
+        refreshToken: newRefresh,
+      );
+
+      // Update the shared Dio header for future requests
+      _dio.options.headers['Authorization'] = 'Bearer $newAccess';
+
+      // Retry the original failed request with the new token
+      final opts = err.requestOptions;
+      opts.headers['Authorization'] = 'Bearer $newAccess';
+      final retried = await _dio.fetch(opts);
+      return handler.resolve(retried);
+    } catch (_) {
+      await _storage.clearAll();
+      return handler.next(err);
+    } finally {
+      _refreshing = false;
+    }
+  }
+}
+
 UserModel parseUserFromResponse(Map<String, dynamic> data) {
   final user = data['user'] as Map<String, dynamic>;
   return UserModel.fromJson(user);

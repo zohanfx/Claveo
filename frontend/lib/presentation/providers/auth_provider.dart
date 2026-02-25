@@ -88,6 +88,10 @@ class AuthNotifier extends ChangeNotifier {
   SecretKey? get encryptionKey => _state.encryptionKey;
 
   AuthNotifier(this._repo, this._storage) {
+    // Register token-refresh interceptor; remove first to avoid duplicates on hot-restart
+    dioProvider.interceptors
+      ..removeWhere((i) => i is TokenRefreshInterceptor)
+      ..add(TokenRefreshInterceptor(_storage, dioProvider));
     _initialize();
   }
 
