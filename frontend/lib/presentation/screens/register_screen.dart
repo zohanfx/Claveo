@@ -41,7 +41,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
             email: _emailCtrl.text.trim(),
             masterPassword: _passwordCtrl.text,
           );
-      if (mounted) context.go(AppRoutes.vault);
+      // Router handles navigation: pinSetupRequired → /setup-pin, otherwise → /vault
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

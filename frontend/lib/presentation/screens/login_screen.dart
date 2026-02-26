@@ -23,6 +23,19 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   bool _showPassword = false;
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadStoredEmail());
+  }
+
+  Future<void> _loadStoredEmail() async {
+    final email = await ref.read(authProvider).getStoredEmail();
+    if (mounted && email != null && _emailCtrl.text.isEmpty) {
+      setState(() => _emailCtrl.text = email);
+    }
+  }
+
+  @override
   void dispose() {
     _emailCtrl.dispose();
     _passwordCtrl.dispose();
@@ -38,7 +51,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             email: _emailCtrl.text.trim(),
             masterPassword: _passwordCtrl.text,
           );
-      if (mounted) context.go(AppRoutes.vault);
+      // Router handles navigation once auth state updates
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

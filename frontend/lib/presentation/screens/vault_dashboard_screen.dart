@@ -4,8 +4,10 @@ import 'package:go_router/go_router.dart';
 import '../../core/constants/app_constants.dart';
 import '../../core/router/app_router.dart';
 import '../../core/theme/app_colors.dart';
+import '../providers/auth_provider.dart';
 import '../providers/vault_provider.dart';
 import '../widgets/category_filter_chip.dart';
+import '../widgets/pin_setup_dialog.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/loading_skeleton.dart';
 import '../widgets/vault_entry_card.dart';
@@ -26,7 +28,19 @@ class _VaultDashboardScreenState extends ConsumerState<VaultDashboardScreen> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(vaultProvider).loadVault();
+      _showPinSetupIfNeeded();
     });
+  }
+
+  void _showPinSetupIfNeeded() {
+    if (!mounted) return;
+    final pinRequired = ref.read(authProvider).state.pinSetupRequired;
+    if (!pinRequired) return;
+
+    showPinSetupDialog(
+      context,
+      onPinConfirmed: (pin) => ref.read(authProvider).completePinSetup(pin),
+    );
   }
 
   @override

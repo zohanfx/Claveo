@@ -42,6 +42,7 @@ class AuthState {
   final SecretKey? encryptionKey;
   final bool isVaultUnlocked;
   final bool onboardingDone;
+  final bool pinSetupRequired;
   final String? error;
 
   const AuthState({
@@ -50,6 +51,7 @@ class AuthState {
     this.encryptionKey,
     this.isVaultUnlocked = false,
     this.onboardingDone = false,
+    this.pinSetupRequired = false,
     this.error,
   });
 
@@ -61,6 +63,7 @@ class AuthState {
     SecretKey? encryptionKey,
     bool? isVaultUnlocked,
     bool? onboardingDone,
+    bool? pinSetupRequired,
     String? error,
   }) {
     return AuthState(
@@ -69,6 +72,7 @@ class AuthState {
       encryptionKey: encryptionKey ?? this.encryptionKey,
       isVaultUnlocked: isVaultUnlocked ?? this.isVaultUnlocked,
       onboardingDone: onboardingDone ?? this.onboardingDone,
+      pinSetupRequired: pinSetupRequired ?? this.pinSetupRequired,
       error: error,
     );
   }
@@ -146,15 +150,14 @@ class AuthNotifier extends ChangeNotifier {
         );
       }
 
-      // Save default PIN if none set yet
       final hasPin = await _storage.hasPin();
-      if (!hasPin) await _storage.savePin('1234');
 
       _emit(_state.copyWith(
         status: AuthStatus.authenticated,
         user: result.user,
         encryptionKey: encKey,
         isVaultUnlocked: true,
+        pinSetupRequired: !hasPin,
       ));
     } catch (e) {
       _emit(_state.copyWith(
@@ -177,15 +180,14 @@ class AuthNotifier extends ChangeNotifier {
       _updateDioToken(result.accessToken);
       await _storage.updateLastActiveTime();
 
-      // Save default PIN if none set yet
       final hasPin = await _storage.hasPin();
-      if (!hasPin) await _storage.savePin('1234');
 
       _emit(_state.copyWith(
         status: AuthStatus.authenticated,
         user: result.user,
         encryptionKey: result.encryptionKey,
         isVaultUnlocked: true,
+        pinSetupRequired: !hasPin,
       ));
     } catch (e) {
       _emit(_state.copyWith(
@@ -268,6 +270,13 @@ class AuthNotifier extends ChangeNotifier {
     } catch (_) {
       return false;
     }
+  }
+
+  Future<String?> getStoredEmail() => _storage.getUserEmail();
+
+  Future<void> completePinSetup(String pin) async {
+    await _storage.savePin(pin);
+    _emit(_state.copyWith(pinSetupRequired: false));
   }
 
   void lockVault() {

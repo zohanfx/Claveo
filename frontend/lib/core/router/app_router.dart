@@ -46,8 +46,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       final authState = authNotifier.state;
       final location = state.matchedLocation;
 
-      // Wait for auth state to be determined
+      // Wait for auth state to be determined.
+      // Login/register screens show their own loading indicator — don't interrupt them.
       if (authState.status == AuthStatus.loading) {
+        if (location == AppRoutes.login || location == AppRoutes.register) {
+          return null;
+        }
         return location == AppRoutes.splash ? null : AppRoutes.splash;
       }
 
@@ -72,10 +76,9 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         return AppRoutes.biometric;
       }
 
-      // Already authenticated — redirect away from auth screens
-      if (isAuthenticated &&
-          isVaultUnlocked &&
-          _isAuthRoute(location)) {
+      // Authenticated + vault unlocked — redirect away from auth screens to vault
+      // (vault will show PIN setup dialog if pinSetupRequired)
+      if (isAuthenticated && isVaultUnlocked && _isAuthRoute(location)) {
         return AppRoutes.vault;
       }
 
